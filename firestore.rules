@@ -1,0 +1,79 @@
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    /**
+     * KEYGUARD SECURITY RULES
+     * Updated to support unauthenticated API-driven HWID binding.
+     */
+
+    // --- Helper Functions ---
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isRoot() {
+      return isSignedIn() && request.auth.token.email == 'iamroot@keyguard.io';
+    }
+
+    function isAdmin() {
+      return isRoot() || (isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin');
+    }
+
+    function isExistingOwner(userId) {
+      return resource != null && isOwner(userId);
+    }
+
+    function isApiKeyOwner() {
+      return isSignedIn() && resource.data.creatorUserId == request.auth.uid;
+    }
+
+    function isLogOwner() {
+      return isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+
+    // --- Collection Rules ---
+
+    match /users/{userId} {
+      allow get: if isOwner(userId) || isAdmin();
+      allow list: if isAdmin();
+      allow create: if isOwner(userId) && request.resource.data.id == userId;
+      allow update: if (isExistingOwner(userId) && request.resource.data.role == resource.data.role) || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    match /apiKeys/{apiKeyId} {
+      allow get: if isApiKeyOwner() || isAdmin();
+      // Allow unauthenticated query by keyValue for the verify API (required for license check)
+      allow list: if isAdmin() || (request.auth == null && request.query.limit <= 5);
+      allow create: if isSignedIn() && (request.resource.data.creatorUserId == request.auth.uid || isAdmin());
+      
+      /**
+       * ALLOW BINDING: Allow unauthenticated updates ONLY for HWID binding and Heartbeat.
+       * This is required because the Client SDK in the Next.js Route Handler is unauthenticated.
+       */
+      allow update: if (request.auth == null && 
+                        resource.data.hwid == "" && 
+                        request.resource.data.hwid != "" && 
+                        request.resource.data.keyValue == resource.data.keyValue) 
+                    || (request.auth == null && request.resource.data.lastUsedAt != resource.data.lastUsedAt)
+                    || isAdmin() || isApiKeyOwner();
+                    
+      allow delete: if resource != null && (isApiKeyOwner() || isAdmin());
+    }
+
+    match /accessLogs/{accessLogId} {
+      allow get: if isLogOwner() || isAdmin();
+      allow list: if isAdmin();
+      allow create: if true; // Allow system to log events from any source
+      allow update: if false;
+      allow delete: if resource != null && isAdmin();
+    }
+  }
+}

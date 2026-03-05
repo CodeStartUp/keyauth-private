@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>License Verification</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #1a1a2e;
+            color: #eee;
+        }
+        .container {
+            background: #16213e;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+        h1 { color: #4ecca3; margin-top: 0; }
+        input {
+            width: 100%;
+            padding: 12px;
+            margin: 10px 0;
+            border: 2px solid #0f3460;
+            border-radius: 5px;
+            background: #0f3460;
+            color: #fff;
+            font-size: 14px;
+            font-family: monospace;
+        }
+        button {
+            width: 100%;
+            padding: 12px;
+            background: #4ecca3;
+            color: #000;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 16px;
+            margin-top: 10px;
+        }
+        button:hover { background: #45b393; }
+        button:disabled {
+            background: #666;
+            cursor: not-allowed;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 5px;
+            display: none;
+        }
+        .success {
+            background: rgba(78, 204, 163, 0.2);
+            border: 1px solid #4ecca3;
+            color: #4ecca3;
+        }
+        .error {
+            background: rgba(231, 76, 60, 0.2);
+            border: 1px solid #e74c3c;
+            color: #e74c3c;
+        }
+        .info {
+            margin-top: 10px;
+            font-size: 14px;
+            opacity: 0.8;
+        }
+        .hwid-display {
+            font-family: monospace;
+            font-size: 12px;
+            padding: 10px;
+            background: #0f3460;
+            border-radius: 5px;
+            margin-top: 10px;
+            word-break: break-all;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔒 License Verification</h1>
+        <label for="apiKey">Enter Your License Key:</label>
+        <input 
+            type="text" 
+            id="apiKey" 
+            placeholder="YOUR-API-KEY-HERE"
+            autocomplete="off"
+        >
+        <button id="verifyBtn" onclick="verifyLicense()">Verify License</button>
+        
+        <div id="result" class="result"></div>
+        
+        <div class="info">
+            <strong>Note:</strong> For web licenses, enable "Web-Based Access" when creating the key to skip hardware binding.
+            <br>
+            <strong>Your Hardware ID:</strong>
+            <div class="hwid-display" id="hwidDisplay">Calculating...</div>
+        </div>
+    </div>
+
+    <script>
+        const API_ENDPOINT = 'http://localhost:9002/api/keys/verify';
+        
+        // Generate browser fingerprint as HWID
+        async function getHWID() {
+            const fingerprint = [
+                navigator.userAgent,
+                navigator.language,
+                screen.width + 'x' + screen.height,
+                screen.colorDepth,
+                new Date().getTimezoneOffset(),
+                navigator.hardwareConcurrency || 'unknown',
+                navigator.deviceMemory || 'unknown',
+                navigator.platform
+            ].join('|');
+            
+            const encoder = new TextEncoder();
+            const data = encoder.encode(fingerprint);
+            const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+            const hashArray = Array.from(new Uint8Array(hashBuffer));
+            const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+            
+            return hashHex.substring(0, 32).toUpperCase();
+        }
+        
+        // Get device name
+        function getDeviceName() {
+            const ua = navigator.userAgent;
+            let browser = 'Unknown', os = 'Unknown';
+            
+            if (ua.indexOf('Firefox') > -1) browser = 'Firefox';
+            else if (ua.indexOf('Chrome') > -1) browser = 'Chrome';
+            else if (ua.indexOf('Safari') > -1) browser = 'Safari';
+            else if (ua.indexOf('Edge') > -1) browser = 'Edge';
+            
+            if (ua.indexOf('Win') > -1) os = 'Windows';
+            else if (ua.indexOf('Mac') > -1) os = 'macOS';
+            else if (ua.indexOf('Linux') > -1) os = 'Linux';
+            else if (ua.indexOf('Android') > -1) os = 'Android';
+            
+            return `${browser} on ${os}`;
+        }
+        
+        // Display HWID on load
+        (async () => {
+            document.getElementById('hwidDisplay').textContent = await getHWID();
+        })();
+        
+        // Verify license
+        async function verifyLicense() {
+            const apiKey = document.getElementById('apiKey').value.trim();
+            const resultDiv = document.getElementById('result');
+            const verifyBtn = document.getElementById('verifyBtn');
+            
+            if (!apiKey) {
+                showResult('Please enter a license key', 'error');
+                return;
+            }
+            
+            verifyBtn.disabled = true;
+            verifyBtn.textContent = 'Verifying...';
+            resultDiv.style.display = 'none';
+            
+            try {
+                const payload = {
+                    keyValue: apiKey,
+                    hwid: await getHWID(),
+                    deviceName: getDeviceName(),
+                    deviceInfo: {
+                        browser: navigator.userAgent,
+                        platform: navigator.platform,
+                        language: navigator.language,
+                        screen: `${screen.width}x${screen.height}`,
+                        cores: navigator.hardwareConcurrency || 'unknown'
+                    }
+                };
+                
+                const response = await fetch(API_ENDPOINT, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                
+                const result = await response.json();
+                
+                if (result.valid) {
+                    let msg = `✓ ${result.message}`;
+                    if (result.daysRemaining) msg += `<br><small>Days left: ${result.daysRemaining}</small>`;
+                    showResult(msg, 'success');
+                } else {
+                    showResult(`✗ ${result.message}`, 'error');
+                }
+                
+            } catch (error) {
+                showResult(`✗ Connection error: ${error.message}`, 'error');
+            } finally {
+                verifyBtn.disabled = false;
+                verifyBtn.textContent = 'Verify License';
+            }
+        }
+        
+        function showResult(message, type) {
+            const div = document.getElementById('result');
+            div.innerHTML = message;
+            div.className = 'result ' + type;
+            div.style.display = 'block';
+        }
+        
+        document.getElementById('apiKey').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') verifyLicense();
+        });
+    </script>
+</body>
+</html>

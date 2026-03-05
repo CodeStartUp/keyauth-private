@@ -1,0 +1,17 @@
+
+{
+  "placeholderImages": [
+    {
+      "id": "security-hero",
+      "description": "Secure digital infrastructure",
+      "imageUrl": "https://picsum.photos/seed/security/1200/800",
+      "imageHint": "cyber security"
+    },
+    {
+      "id": "avatar-admin",
+      "description": "Administrator avatar",
+      "imageUrl": "https://picsum.photos/seed/admin/100/100",
+      "imageHint": "person avatar"
+    }
+  ]
+}
