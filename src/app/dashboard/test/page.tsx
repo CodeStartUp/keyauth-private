@@ -237,6 +237,15 @@ export default function TestPage() {
   }
 
   const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text).then(() => {
+      toast({
+        title: "Copied!",
+        description: "Content copied to clipboard"
+      })
+    })
+  }
+
+  return (
     <div className="space-y-8 animate-in slide-in-from-bottom-2 duration-500">
       <div className="flex items-center justify-between">
         <div className="space-y-1">
@@ -673,5 +682,5 @@ print('✓ Valid' if data['valid'] else '✗ Invalid')`}
         </CardContent>
       </Card>
     </div>
-  
+  );
 }
